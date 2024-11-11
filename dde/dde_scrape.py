@@ -9,7 +9,6 @@ import csv
 def init_db(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS dde (
         id integer PRIMARY KEY autoincrement,
@@ -19,7 +18,6 @@ def init_db(db_path):
         structured_data text,  -- Store data in JSON format
         time DATETIME DEFAULT CURRENT_TIMESTAMP
     )""")
-
     return conn, cursor
 
 def store_entry(url, word, entry_type, structured_data):
@@ -29,7 +27,6 @@ def store_entry(url, word, entry_type, structured_data):
             url, word, type, structured_data
         ) VALUES (?, ?, ?, ?)
         ''', [url, word, entry_type, json.dumps(structured_data, ensure_ascii=False)])
-
         con.commit()
         print(f' 💾 {entry_type.capitalize()} "{word}" @ {url} stored')
     except Exception as e:
@@ -44,12 +41,10 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
 
     retries = 0
     markup = ''
-
     while retries < max_retries:
         print(f'Fetching {url}... Attempt {retries + 1}/{max_retries}')
         driver.get(url)
         markup = driver.page_source.strip()
-
         if markup:
             break
         else:
@@ -69,7 +64,6 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
         return
 
     soup.make_links_absolute(base_url='https://rae.es/diccionario-estudiante/')
-
     word_element = soup.xpath('//span[@class="entrada"]')
     word = word_element[0].text_content() if word_element else None
 
@@ -82,16 +76,30 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
     def get_text_content(element):
         return ''.join(element.itertext()).strip() if element is not None else ''
 
+    unique_definitions = set()
+
     paracep = soup.xpath('//div[@class="paracep"]')
     if paracep:
         for acep in paracep[0].xpath('.//div[contains(@class, "acep")]'):
+            definition_text = get_text_content(acep.xpath('.//span[@class="def"]')[0]) if acep.xpath('.//span[@class="def"]') else ""
+            acep_id = acep.get('id')
+            unique_id = (definition_text, acep_id)
+
+            if acep_id is None:
+                continue
+
+            if unique_id in unique_definitions:
+                continue
+
+            unique_definitions.add(unique_id)
             definition_data = {
                 "definition": '',
                 "grammar_tags": [],
                 "usage_tags": [],
                 "examples": [],
                 "synonyms": [],
-                "antonyms": []
+                "antonyms": [],
+                "id": acep_id
             }
 
             definition = acep.xpath('.//span[@class="def"]')
@@ -111,13 +119,27 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
     if articles:
         for article in articles:
             for acep in article.xpath('.//div[contains(@class, "acep")]'):
+                definition_text = get_text_content(acep.xpath('.//span[@class="def"]')[0]) if acep.xpath('.//span[@class="def"]') else ""
+                acep_id = acep.get('id')
+                unique_id = (definition_text, acep_id)
+
+                if acep_id is None:
+                    continue
+
+                if unique_id in unique_definitions:
+                    continue
+
+                unique_definitions.add(unique_id)
+
+
                 definition_data = {
                     "definition": '',
                     "grammar_tags": [],
                     "usage_tags": [],
                     "examples": [],
                     "synonyms": [],
-                    "antonyms": []
+                    "antonyms": [],
+                    "id": acep_id
                 }
 
                 definition = acep.xpath('.//span[@class="def"]')
@@ -133,35 +155,7 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
 
                 structured_data.append(definition_data)
 
-    locs_and_sols = article.xpath('.//div[@class="locs"]//div[@class="fc"] | .//div[@class="sols"]//div[@class="fc"]')
-    if locs_and_sols:
-        for loc in locs_and_sols:
-            expression_element = loc.xpath('.//span[@class="headword-fc"]')
-            headword = expression_element[0].text_content() if expression_element else key_word
-
-            definition_data = {
-                "definition": '',
-                "grammar_tags": [],
-                "usage_tags": [],
-                "examples": []
-            }
-
-            definition = loc.xpath('.//div[@class="acep nogr"]//span[@class="def"]')
-            if definition:
-                definition_data["definition"] = get_text_content(definition[0])
-
-            extract_tags(loc, definition_data, grammar_tags, usage_tags)
-
-            # Extract example sentences
-            examples_loc = loc.xpath('.//div[@class="acep nogr"]//span[@class="ejemplo"]')
-            definition_data["examples"].extend(get_text_content(e) for e in examples_loc)
-
-            expression_url = f"{url}#{loc.get('id')}"
-            if headword:
-                store_entry(expression_url, headword, 'expression', [definition_data])
-
     store_entry(url, key_word, 'verb' if paracep else 'general', structured_data)
-
 
 def extract_tags(element, definition_data, grammar_tags, usage_tags):
     grammar_tags_in_element = element.xpath(".//abbr[@class='gram' or @class='gram primera']")
@@ -208,7 +202,6 @@ if __name__ == '__main__':
     words = [word for word in words if word not in unfound_words]
 
     con, cur = init_db('dde2.db')
-
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--ignore-certificate-errors')
@@ -216,7 +209,6 @@ if __name__ == '__main__':
     chrome_options.add_argument('--disable-extensions')
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('window-size=800,700')
-
     driver = webdriver.Chrome(options=chrome_options)
 
     grammar_tags = {}
