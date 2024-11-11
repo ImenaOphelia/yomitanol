@@ -91,14 +91,34 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
                 "antonyms": []
             }
 
-            definition = acep.xpath('.//span[@class="def"]/text()')
-            if definition:
-                definition_data["definition"] = ' '.join(definition)
+            definition_elements = acep.xpath('.//span[@class="def"]')
+            definition_text = ""
+            for element in definition_elements:
+                if element.xpath('.//span'):  # Check if there are nested spans
+                    for subelement in element.itertext():  # Iterate over each text segment
+                        if subelement.getparent().tag == 'span' and 'class' in subelement.getparent().attrib:
+                            # Add italic tags around nested span text
+                            definition_text += f"<i>{subelement}</i> "
+                        else:
+                            definition_text += subelement + " "
+                else:
+                    definition_text += ' '.join(element.xpath('.//text()'))
+            definition_data["definition"] = definition_text.strip()
 
             extract_tags(acep, definition_data, grammar_tags, usage_tags)
 
-            example_elements = acep.xpath('.//span[@class="ejemplo"]/text()')
-            definition_data["examples"].extend(example_elements)
+            example_elements = acep.xpath('.//span[@class="ejemplo"]')
+            example_text = ""
+            for element in example_elements:
+                if element.xpath('.//span'):
+                    for subelement in element.itertext():
+                        if subelement.getparent().tag == 'span' and 'class' in subelement.getparent().attrib:
+                            example_text += f"<i>{subelement}</i> "
+                        else:
+                            example_text += subelement + " "
+                else:
+                    example_text += ' '.join(element.xpath('.//text()'))
+            definition_data["examples"].append(example_text.strip())
 
             extract_synonyms_antonyms(acep, definition_data)
 
@@ -117,14 +137,33 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
                     "antonyms": []
                 }
 
-                definition = acep.xpath('.//span[@class="def"]/text()')
-                if definition:
-                    definition_data["definition"] = ' '.join(definition)
+                definition_elements = acep.xpath('.//span[@class="def"]')
+                definition_text = ""
+                for element in definition_elements:
+                    if element.xpath('.//span'):
+                        for subelement in element.itertext():
+                            if subelement.getparent().tag == 'span' and 'class' in subelement.getparent().attrib:
+                                definition_text += f"<i>{subelement}</i> "
+                            else:
+                                definition_text += subelement + " "
+                    else:
+                        definition_text += ' '.join(element.xpath('.//text()'))
+                definition_data["definition"] = definition_text.strip()
 
                 extract_tags(acep, definition_data, grammar_tags, usage_tags)
 
-                example_elements = acep.xpath('.//span[@class="ejemplo"]/text()')
-                definition_data["examples"].extend(example_elements)
+                example_elements = acep.xpath('.//span[@class="ejemplo"]')
+                example_text = ""
+                for element in example_elements:
+                    if element.xpath('.//span'):
+                        for subelement in element.itertext():
+                            if subelement.getparent().tag == 'span' and 'class' in subelement.getparent().attrib:
+                                example_text += f"<i>{subelement}</i> "
+                            else:
+                                example_text += subelement + " "
+                    else:
+                        example_text += ' '.join(element.xpath('.//text()'))
+                definition_data["examples"].append(example_text.strip())
 
                 extract_synonyms_antonyms(acep, definition_data)
 
