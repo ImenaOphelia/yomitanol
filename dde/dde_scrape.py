@@ -155,6 +155,34 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
 
                 structured_data.append(definition_data)
 
+    locs_and_sols = article.xpath('.//div[@class="locs"]//div[@class="fc"] | .//div[@class="sols"]//div[@class="fc"]')
+    if locs_and_sols:
+        for loc in locs_and_sols:
+            expression_element = loc.xpath('.//span[@class="headword-fc"]')
+            headword = expression_element[0].text_content() if expression_element else key_word  # Use site headword if available, else fallback
+
+            definition_data = {
+                "id": loc.get('id'),
+                "definition": '',
+                "grammar_tags": [],
+                "usage_tags": [],
+                "examples": []
+            }
+
+            definition = loc.xpath('.//div[@class="acep nogr"]//span[@class="def"]/text()')
+            if definition:
+                definition_data["definition"] = ' '.join(definition)
+
+            extract_tags(loc, definition_data, grammar_tags, usage_tags)
+
+            examples_loc = loc.xpath('.//div[@class="acep nogr"]//span[@class="ejemplo"]/text()')
+            definition_data["examples"].extend(examples_loc)
+
+            expression_url = f"{url}#{loc.get('id')}"
+
+            if headword:
+                store_entry(expression_url, headword, 'expression', [definition_data])
+
     store_entry(url, key_word, 'verb' if paracep else 'general', structured_data)
 
 def extract_tags(element, definition_data, grammar_tags, usage_tags):
