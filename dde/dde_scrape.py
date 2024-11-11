@@ -79,6 +79,9 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
 
     structured_data = []
 
+    def get_text_content(element):
+        return ''.join(element.itertext()).strip() if element is not None else ''
+
     paracep = soup.xpath('//div[@class="paracep"]')
     if paracep:
         for acep in paracep[0].xpath('.//div[contains(@class, "acep")]'):
@@ -91,34 +94,14 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
                 "antonyms": []
             }
 
-            definition_elements = acep.xpath('.//span[@class="def"]')
-            definition_text = ""
-            for element in definition_elements:
-                if element.xpath('.//span'):  # Check if there are nested spans
-                    for subelement in element.itertext():  # Iterate over each text segment
-                        if subelement.getparent().tag == 'span' and 'class' in subelement.getparent().attrib:
-                            # Add italic tags around nested span text
-                            definition_text += f"<i>{subelement}</i> "
-                        else:
-                            definition_text += subelement + " "
-                else:
-                    definition_text += ' '.join(element.xpath('.//text()'))
-            definition_data["definition"] = definition_text.strip()
+            definition = acep.xpath('.//span[@class="def"]')
+            if definition:
+                definition_data["definition"] = get_text_content(definition[0])
 
             extract_tags(acep, definition_data, grammar_tags, usage_tags)
 
             example_elements = acep.xpath('.//span[@class="ejemplo"]')
-            example_text = ""
-            for element in example_elements:
-                if element.xpath('.//span'):
-                    for subelement in element.itertext():
-                        if subelement.getparent().tag == 'span' and 'class' in subelement.getparent().attrib:
-                            example_text += f"<i>{subelement}</i> "
-                        else:
-                            example_text += subelement + " "
-                else:
-                    example_text += ' '.join(element.xpath('.//text()'))
-            definition_data["examples"].append(example_text.strip())
+            definition_data["examples"].extend(get_text_content(e) for e in example_elements)
 
             extract_synonyms_antonyms(acep, definition_data)
 
@@ -137,33 +120,14 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
                     "antonyms": []
                 }
 
-                definition_elements = acep.xpath('.//span[@class="def"]')
-                definition_text = ""
-                for element in definition_elements:
-                    if element.xpath('.//span'):
-                        for subelement in element.itertext():
-                            if subelement.getparent().tag == 'span' and 'class' in subelement.getparent().attrib:
-                                definition_text += f"<i>{subelement}</i> "
-                            else:
-                                definition_text += subelement + " "
-                    else:
-                        definition_text += ' '.join(element.xpath('.//text()'))
-                definition_data["definition"] = definition_text.strip()
+                definition = acep.xpath('.//span[@class="def"]')
+                if definition:
+                    definition_data["definition"] = get_text_content(definition[0])
 
                 extract_tags(acep, definition_data, grammar_tags, usage_tags)
 
                 example_elements = acep.xpath('.//span[@class="ejemplo"]')
-                example_text = ""
-                for element in example_elements:
-                    if element.xpath('.//span'):
-                        for subelement in element.itertext():
-                            if subelement.getparent().tag == 'span' and 'class' in subelement.getparent().attrib:
-                                example_text += f"<i>{subelement}</i> "
-                            else:
-                                example_text += subelement + " "
-                    else:
-                        example_text += ' '.join(element.xpath('.//text()'))
-                definition_data["examples"].append(example_text.strip())
+                definition_data["examples"].extend(get_text_content(e) for e in example_elements)
 
                 extract_synonyms_antonyms(acep, definition_data)
 
@@ -182,23 +146,21 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
                 "examples": []
             }
 
-            definition = loc.xpath('.//div[@class="acep nogr"]//span[@class="def"]/text()')
+            definition = loc.xpath('.//div[@class="acep nogr"]//span[@class="def"]')
             if definition:
-                definition_data["definition"] = ' '.join(definition)
+                definition_data["definition"] = get_text_content(definition[0])
 
             extract_tags(loc, definition_data, grammar_tags, usage_tags)
 
-            examples_loc = loc.xpath('.//div[@class="acep nogr"]//span[@class="ejemplo"]/text()')
-            definition_data["examples"].extend(examples_loc)
+            # Extract example sentences
+            examples_loc = loc.xpath('.//div[@class="acep nogr"]//span[@class="ejemplo"]')
+            definition_data["examples"].extend(get_text_content(e) for e in examples_loc)
 
             expression_url = f"{url}#{loc.get('id')}"
-
             if headword:
                 store_entry(expression_url, headword, 'expression', [definition_data])
 
-
     store_entry(url, key_word, 'verb' if paracep else 'general', structured_data)
-
 
 
 def extract_tags(element, definition_data, grammar_tags, usage_tags):
