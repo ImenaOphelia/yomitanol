@@ -156,6 +156,9 @@ cython_debug/
 
 # Temporary
 babylon/
+
+# Custom
+dde2.db
 tests/
 
 # PyCharm

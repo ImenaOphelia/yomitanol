@@ -32,7 +32,15 @@ def store_entry(url, word, entry_type, structured_data):
     except Exception as e:
         print(e, url)
 
+def is_word_saved(word):
+    cur.execute('SELECT count(*) FROM dde WHERE word=?', (word,))
+    return cur.fetchone()[0] > 0
+
 def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words, max_retries=3):
+    if is_word_saved(key_word):
+        print(f'SKIPPING: Word "{key_word}" already saved')
+        return
+
     cur.execute('SELECT count(*) FROM dde WHERE url=?', (url,))
     count = cur.fetchone()[0]
     if count == 1:
@@ -231,6 +239,13 @@ if __name__ == '__main__':
 
     con, cur = init_db('dde2.db')
     chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_argument("--guest")
+    chrome_options.add_argument("--blink-settings=imagesEnabled=false")
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--disable-first-run-ui')
+    chrome_options.add_argument('--disable-popup-blocking')
+    chrome_options.add_argument('--disable-notifications')
+    chrome_options.add_argument('--disable-infobars')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--ignore-certificate-errors')
     chrome_options.add_argument('--ignore-ssl-errors')

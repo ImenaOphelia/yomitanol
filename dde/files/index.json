@@ -1,1 +1,12 @@
-{"format":3,"revision":"2024.10.24","sequenced":true,"url":"https://rae.es/diccionario-estudiante/","description":"A Student's Dictionary by The Royal Spanish Academy converted to a Yomitan-compatible format.","attribution":"Real Academia Española","sourceLanguage":"es","targetLanguage":"es","title":"Diccionario del estudiante","indexUrl":"https://rae.es/diccinario-estudiante"}
+{
+    "format": 3,
+    "revision": "2024.11.11",
+    "sequenced": true,
+    "url": "https://rae.es/diccionario-estudiante/",
+    "description": "A Student's Dictionary by The Royal Spanish Academy converted to a Yomitan-compatible format.",
+    "attribution": "Real Academia Española",
+    "sourceLanguage": "es",
+    "targetLanguage": "es",
+    "title": "Diccionario del estudiante",
+    "indexUrl": "https://github.com/ImenaOphelia/yomitanol/blob/main/dde/Diccionario%20del%20estudiante.zip"
+}
