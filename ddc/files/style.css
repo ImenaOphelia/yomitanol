@@ -1,0 +1,48 @@
+tbody > tr td {
+    border-collapse: collapse;
+    text-align: center;
+}
+tbody > tr th {
+    background-color: #f2f2f2;
+    border-collapse: collapse;
+    border-top: 1px solid #000 !important;
+    padding: 0.5em;
+    text-align: center;
+}
+tr th:nth-child(1) {
+    color: gray;
+    font-size: 0.9em;
+    font-weight: 400;
+    letter-spacing: -1px !important;
+    word-spacing: -1px !important;
+}
+tr th:nth-child(2) {
+    color: gray;
+    font-size: 0.9em;
+    font-weight: 400;
+    letter-spacing: -1px !important;
+    word-spacing: -1px !important;
+}
+tr th:nth-child(3) {
+    color: gray;
+    font-size: 0.9em;
+    font-weight: 400;
+    letter-spacing: -1px !important;
+    word-spacing: -1px !important;
+}
+tr th:nth-child(4) {
+    font-size: 1.1em;
+    font-variant: small-caps;
+    font-weight: 400;
+}
+tr th:nth-child(5) {
+    font-size: 1.1em;
+    font-variant: small-caps;
+    font-weight: 400;
+}
+[data-g]:before {
+    content: attr(data-g);
+}
+td:before {
+    content: attr(data-g);
+}

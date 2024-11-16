@@ -1,0 +1,22 @@
+body {
+    text-align: center;
+}
+.verb-conjugation {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+.verb-conjugation th {
+    background-color: #f4f4f4;
+    font-weight: bold;
+}
+
+.verb-conjugation td, 
+.verb-conjugation th {
+    border: 1px solid #ddd;
+    padding: 8px;
+}

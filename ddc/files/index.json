@@ -1,0 +1,12 @@
+{
+    "format": 3,
+    "revision": "2024.11.12",
+    "sequenced": true,
+    "url": "https://dle.rae.es/",
+    "description": "Meta conjugation dictionary based on data from DLE. Meant to be used with Diccionario del estudiante.",
+    "attribution": "Real Academia Española",
+    "sourceLanguage": "es",
+    "targetLanguage": "es",
+    "title": "Diccionario de conjugaciones",
+    "indexUrl": "https://github.com/ImenaOphelia/yomitanol/blob/main/ddc/Diccionario%20de%20conjugaciones.zip"
+}

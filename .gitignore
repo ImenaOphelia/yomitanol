@@ -156,9 +156,12 @@ cython_debug/
 
 # Temporary
 babylon/
+oxford/
 
 # Custom
 dde2.db
+DRAE.db
+drae.css
 tests/
 
 # PyCharm

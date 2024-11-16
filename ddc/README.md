@@ -1,7 +1,7 @@
-# Diccionario de conjugación (DDC)
+# Diccionario de conjugaciones (DDC)
 | Attribute       | Value                                  |
 | --------------- | -------------------------------------- |
-| Full name       | Diccionario de conjugación             |
+| Full name       | Diccionario de conjugaciones           |
 | Abbreviation    | DDC                                    |
 | Attribution     | Real Academia Española (RAE)           |
 | License         | Proprietary                            |
@@ -10,7 +10,7 @@
 | URL             | https://dle.rae.es/                    |
 | Scrape          | See [dle_scrape](../dle/dle_scrape.py) |
 | Convert         | [ddc_convert.py](ddc_convert.py)       |
-| Download        | Diccionario de conjugación.zip         |
+| Download        | Diccionario de conjugaciones.zip       |
 
 Meta conjugation dictionary based on data from DLE. Meant to be used with [Diccionario del estudiante](../dde/README.md).
 
