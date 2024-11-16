@@ -162,6 +162,8 @@ oxford/
 dde2.db
 DRAE.db
 drae.css
+conjugation_filtered.json
+duplicates_report.txt
 tests/
 
 # PyCharm
