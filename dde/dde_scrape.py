@@ -36,7 +36,7 @@ def is_word_saved(word):
     cur.execute('SELECT count(*) FROM dde WHERE word=?', (word,))
     return cur.fetchone()[0] > 0
 
-def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words, max_retries=3):
+def fetch_page(driver, url, key_word, grammar_tags, usage_tags, geo_tags, not_found_words, max_retries=3):
     if is_word_saved(key_word):
         print(f'SKIPPING: Word "{key_word}" already saved')
         return
@@ -104,6 +104,7 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
                 "definition": '',
                 "grammar_tags": [],
                 "usage_tags": [],
+                "geo_tags": [],
                 "examples": [],
                 "synonyms": [],
                 "antonyms": [],
@@ -114,7 +115,7 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
             if definition:
                 definition_data["definition"] = get_text_content(definition[0])
 
-            extract_tags(acep, definition_data, grammar_tags, usage_tags)
+            extract_tags(acep, definition_data, grammar_tags, usage_tags, geo_tags)
 
             example_elements = acep.xpath('.//span[@class="ejemplo"]')
             definition_data["examples"].extend(get_text_content(e) for e in example_elements)
@@ -144,6 +145,7 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
                     "definition": '',
                     "grammar_tags": [],
                     "usage_tags": [],
+                    "geo_tags": [],
                     "examples": [],
                     "synonyms": [],
                     "antonyms": [],
@@ -154,7 +156,7 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
                 if definition:
                     definition_data["definition"] = get_text_content(definition[0])
 
-                extract_tags(acep, definition_data, grammar_tags, usage_tags)
+                extract_tags(acep, definition_data, grammar_tags, usage_tags, geo_tags)
 
                 example_elements = acep.xpath('.//span[@class="ejemplo"]')
                 definition_data["examples"].extend(get_text_content(e) for e in example_elements)
@@ -174,6 +176,7 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
                 "definition": '',
                 "grammar_tags": [],
                 "usage_tags": [],
+                "geo_tags": [],
                 "examples": []
             }
 
@@ -181,7 +184,7 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
             if definition:
                 definition_data["definition"] = ' '.join(definition)
 
-            extract_tags(loc, definition_data, grammar_tags, usage_tags)
+            extract_tags(loc, definition_data, grammar_tags, usage_tags, geo_tags)
 
             examples_loc = loc.xpath('.//div[@class="acep nogr"]//span[@class="ejemplo"]/text()')
             definition_data["examples"].extend(examples_loc)
@@ -193,7 +196,7 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, not_found_words,
 
     store_entry(url, key_word, 'verb' if paracep else 'general', structured_data)
 
-def extract_tags(element, definition_data, grammar_tags, usage_tags):
+def extract_tags(element, definition_data, grammar_tags, usage_tags, geo_tags):
     grammar_tags_in_element = element.xpath(".//abbr[@class='gram' or @class='gram primera']")
     for tag in grammar_tags_in_element:
         tag_name = tag.get('title')
@@ -207,6 +210,13 @@ def extract_tags(element, definition_data, grammar_tags, usage_tags):
         tag_text = tag.text
         definition_data["usage_tags"].append({"tag": tag_text})
         usage_tags[(tag_text, tag_name)] = True
+
+    geo_tags_in_element = element.xpath(".//abbr[@class='geo']")
+    for tag in geo_tags_in_element:
+        tag_name = tag.get('title')
+        tag_text = tag.text
+        definition_data["geo_tags"].append({"tag": tag_text})
+        geo_tags[(tag_text, tag_name)] = True
 
 def extract_synonyms_antonyms(acep, definition_data):
     for ref in acep.xpath('.//div[contains(@class, "ref")]'):
@@ -263,6 +273,7 @@ if __name__ == '__main__':
 
     save_tags_to_file(grammar_tags, 'grammar_tags.csv')
     save_tags_to_file(usage_tags, 'usage_tags.csv')
+    save_tags_to_file(geo_tags, 'geo_tags.csv')
 
     with open('unfound_words.txt', 'w', encoding='utf-8') as f:
         for unfound_word in sorted(unfound_words):

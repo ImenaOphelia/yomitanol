@@ -166,6 +166,11 @@ conjugation_filtered.json
 duplicates_report.txt
 tests/
 
+# Temp
+dde/dde_keys_1.txt
+dde/get_keys.py
+freq/
+
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
