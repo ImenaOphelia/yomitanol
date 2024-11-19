@@ -6,7 +6,6 @@ import json
 import csv
 from datetime import datetime
 
-
 def store_entry(file_handle, url, word, entry_type, structured_data):
     try:
         entry = {
@@ -21,9 +20,31 @@ def store_entry(file_handle, url, word, entry_type, structured_data):
     except Exception as e:
         print(e, url)
 
-
 def get_text_content(element):
     return ' '.join(element.xpath('.//text()')).strip() if element is not None else ''
+
+def get_next_word(soup, current_word):
+    rueda = soup.xpath('//ul[@class="rueda"]/li/a | //ul[@class="rueda"]/li/b')
+    current_found = False
+    
+    words_in_wheel = [link.text_content().strip() for link in rueda]
+    
+    for i, link in enumerate(rueda):
+        word = link.text_content().strip()
+        if current_found:
+            next_word = word
+            print(f"Found next word: {next_word}")
+            return next_word
+        if word == current_word:
+            current_found = True
+            if i == len(rueda) - 1:
+                next_word = words_in_wheel[0]
+                return next_word
+            
+    if not current_found:
+        print(f"Warning: Could not find {current_word} in the term wheel")
+    
+    return None
 
 def fetch_page(output_file, driver, url, key_word, grammar_tags, usage_tags, geo_tags, not_found_words, max_retries=3):
     retries = 0
@@ -41,14 +62,14 @@ def fetch_page(output_file, driver, url, key_word, grammar_tags, usage_tags, geo
     if not markup:
         not_found_words.append(url)
         print(f' ❌ No valid content found for "{key_word}" @ {url} after {max_retries} attempts. Skipping...')
-        return
+        return None
 
     try:
         soup = lxml.html.fromstring(markup)
     except lxml.etree.ParserError as e:
         print(f'Parsing error for "{key_word}" @ {url}: {e}. Skipping...')
         not_found_words.append(url)
-        return
+        return None
 
     soup.make_links_absolute(base_url='https://rae.es/diccionario-estudiante/')
     word_element = soup.xpath('//span[@class="entrada"]')
@@ -56,7 +77,7 @@ def fetch_page(output_file, driver, url, key_word, grammar_tags, usage_tags, geo
 
     if not word:
         print(f' ❌ No entry found for "{key_word}" @ {url}. Skipping...')
-        return
+        return None
 
     structured_data = []
     expressions_data = []
@@ -67,6 +88,7 @@ def fetch_page(output_file, driver, url, key_word, grammar_tags, usage_tags, geo
     note = None
     paracep = soup.xpath('//div[@class="paracep"]')
 
+    # Process paracep if it exists
     if paracep:
         model_span = paracep[0].xpath('.//span[contains(@class, "verboModelo")]')
         plural_span = paracep[0].xpath('.//span[contains(@class, "pluralForm")]')
@@ -88,6 +110,10 @@ def fetch_page(output_file, driver, url, key_word, grammar_tags, usage_tags, geo
         for acep in paracep[0].xpath('.//div[contains(@class, "acep")]'):
             process_definition(acep, structured_data, grammar_tags, usage_tags, geo_tags)
 
+        for p in paracep:
+            p.getparent().remove(p)
+
+    # Process articles
     articles = soup.xpath('//article')
     if articles:
         for article in articles:
@@ -161,6 +187,8 @@ def fetch_page(output_file, driver, url, key_word, grammar_tags, usage_tags, geo
     for expr in expressions_data:
         expr_url = f"{url}#{expr['data']['id']}"
         store_entry(output_file, expr_url, expr['expression'], expr['type'], [expr['data']])
+
+    return soup
 
 def process_definition(acep, structured_data, grammar_tags, usage_tags, geo_tags):
     definition_text = get_text_content(acep.xpath('.//span[@class="def"]')[0]) if acep.xpath('.//span[@class="def"]') else ""
@@ -254,18 +282,9 @@ def save_tags_to_file(tags, filename):
     pass
 
 if __name__ == '__main__':
-    words = open('dde_keys_test.txt', encoding='utf-8').readlines()
-    words = [w.strip().rstrip('.') for w in words]
-    words = [w.split(',')[0] if ',' in w else w for w in words]
-
-    try:
-        with open('unfound_words.txt', 'r', encoding='utf-8') as f:
-            unfound_words = set(line.strip() for line in f)
-    except FileNotFoundError:
-        unfound_words = set()
-
-    words = [word for word in words if word not in unfound_words]
-
+    initial_word = "actitud"  # Starting word
+    processed_words = set()
+    current_word = initial_word
     output_file = open('term_bank_0.jsonl', 'w', encoding='utf-8')
     
     chrome_options = webdriver.ChromeOptions()
@@ -287,20 +306,43 @@ if __name__ == '__main__':
     grammar_tags = {}
     usage_tags = {}
     geo_tags = {}
+    not_found_words = []
 
-    for word in words:
-        url = f'https://rae.es/diccionario-estudiante/{word}'
-        fetch_page(output_file, driver, url, word, grammar_tags, usage_tags, geo_tags, unfound_words)
+    try:
+        while current_word and current_word not in processed_words:
+            print(f"\nProcessing word: {current_word}")
+            url = f'https://rae.es/diccionario-estudiante/{current_word}'
+            soup = fetch_page(output_file, driver, url, current_word, grammar_tags, usage_tags, geo_tags, not_found_words)
+            
+            if soup is None:
+                print(f"Error processing {current_word}, stopping")
+                break
+                
+            processed_words.add(current_word)
+            
+            next_word = get_next_word(soup, current_word)
+            
+            if next_word is None:
+                break
+                
+            if next_word == initial_word:
+                break
+                
+            current_word = next_word
 
-    output_file.close()
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        
+    finally:
+        output_file.close()
+        
+        save_tags_to_file(grammar_tags, 'grammar_tags.csv')
+        save_tags_to_file(usage_tags, 'usage_tags.csv')
+        save_tags_to_file(geo_tags, 'geo_tags.csv')
 
-    save_tags_to_file(grammar_tags, 'grammar_tags.csv')
-    save_tags_to_file(usage_tags, 'usage_tags.csv')
-    save_tags_to_file(geo_tags, 'geo_tags.csv')
+        with open('unfound_words.txt', 'w', encoding='utf-8') as f:
+            for unfound_word in sorted(not_found_words):
+                f.write(f"{unfound_word}\n")
 
-    with open('unfound_words.txt', 'w', encoding='utf-8') as f:
-        for unfound_word in sorted(unfound_words):
-            f.write(f"{unfound_word}\n")
-
-    print('Completed. Quitting...')
-    driver.quit()
+        print('Completed. Quitting...')
+        driver.quit()
