@@ -1,7 +1,6 @@
-import sqlite3
 import json
 import logging
-import time
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -17,6 +16,7 @@ grammar_rule_mapping = {
     "f.": "n",
     "n.": "n"
 }
+
 conjugation_model_mapping = {
     "amar": "1",
     "temer": "2",
@@ -87,43 +87,88 @@ conjugation_model_mapping = {
     "ver": "66",
     "yacer": "67"
 }
-def convert_to_yomitan_format(db_path, output_path):
-    logging.info("Starting the conversion process.")
-    try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        logging.info(f"Connected to the database: {db_path}")
-    except sqlite3.Error as e:
-        logging.error(f"Error connecting to the database: {e}")
-        return
 
+
+def clean_star_symbols(synonym_or_antonym):
+    """
+    Remove * symbols from synonyms/antonyms.
+    """
+    return synonym_or_antonym.replace('*', '').strip()
+
+
+def read_from_jsonl(file_path):
+    """
+    Reads the input JSONL file and returns the entries as a list.
+    """
+    logging.info(f"Reading from JSONL file: {file_path}")
+    entries = []
     try:
-        cursor.execute("SELECT word, structured_data FROM dde")
-        rows = cursor.fetchall()
-        logging.info(f"Fetched {len(rows)} rows from the database.")
-    except sqlite3.Error as e:
-        logging.error(f"Error fetching data from the database: {e}")
-        conn.close()
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                entries.append(json.loads(line))
+        logging.info(f"Loaded {len(entries)} entries from {file_path}")
+    except Exception as e:
+        logging.error(f"Error reading JSONL file: {e}")
+    return entries
+
+
+def get_definitions(entry_data):
+    """
+    Extract definitions from entry data, handling both regular and solution entries.
+    """
+    if isinstance(entry_data, dict) and 'definitions' in entry_data:
+        return entry_data['definitions']
+    elif isinstance(entry_data, list):
+        return entry_data
+    return []
+
+
+def convert_to_yomitan_format(db_path, output_path, input_type='jsonl'):
+    """
+    Converts the JSONL file into the desired Yomitan format.
+    """
+    logging.info("Starting the conversion process.")
+
+    if input_type == 'jsonl':
+        data_source = read_from_jsonl(db_path)
+    else:
+        logging.error(f"Unsupported input type: {input_type}")
         return
 
     yomitan_entries = []
 
-    for row in rows:
-        word = row[0]
-        structured_data = json.loads(row[1])
-        logging.info(f"Processing word: {word}")
+    for entry in data_source:
+        word = entry['word']
+        entry_type = entry['type']
+        structured_data = entry['data']
+        logging.info(f"Processing word: {word} (type: {entry_type})")
 
         reading = ""
-
         grouped_definitions = {}
+        plural_form = structured_data.get("plural", "")
+        participles = structured_data.get("participios", [])
+        expressions = structured_data.get("expressions", [])
+        term_note = structured_data.get("term_note", "")
 
-        for entry in structured_data:
-            definition = entry.get('definition', '')
-            logging.debug(f"Definition found: {definition}")
+        definitions = get_definitions(structured_data)
+        
+        if not definitions:
+            logging.warning(f"No definitions found for word '{word}'")
+            continue
 
-            grammar_tags = [tag['tag'].replace(' ', '-') for tag in entry.get('grammar_tags', [])]
-            usage_tags = [tag['tag'].replace(' ', '-') for tag in entry.get('usage_tags', [])]
-            definition_tags = ' '.join(grammar_tags + usage_tags)
+        for idx, definition in enumerate(definitions):
+            if not isinstance(definition, dict):
+                logging.warning(f"Skipping definition for word '{word}' because it is not a dictionary.")
+                continue
+
+            definition_text = definition.get('definition', '')
+            logging.debug(f"Definition found: {definition_text}")
+
+            grammar_tags = [tag['tag'].replace(' ', '-') for tag in definition.get('grammar_tags', [])]
+            usage_tags = [tag['tag'].replace(' ', '-') for tag in definition.get('usage_tags', [])]
+            geo_tags = [tag['tag'].replace(' ', '-') for tag in definition.get('geo_tags', [])]
+            def_notes = definition.get('def_notes', [])
+            definition_tags = ' '.join(grammar_tags + usage_tags + geo_tags)
             logging.debug(f"Combined definition tags: {definition_tags}")
 
             rule_identifier = ""
@@ -137,15 +182,44 @@ def convert_to_yomitan_format(db_path, output_path):
 
             structured_content = {
                 "type": "structured-content",
-                "content": [definition]
+                "content": [definition_text]
             }
+
+            if idx == 0:
+                if term_note:
+                    structured_content["content"].append({
+                        "tag": "div",
+                        "data": {"content": "term-note"},
+                        "content": term_note
+                    })
+
+                if plural_form:
+                    structured_content["content"].append({
+                        "tag": "div",
+                        "data": {"content": "plural"},
+                        "content": plural_form
+                    })
+
+                participles_content = [
+                    {
+                        "tag": "a",
+                        "content": clean_star_symbols(participle),
+                        "href": f"?query={clean_star_symbols(participle)}&wildcards=off"
+                    } for participle in participles
+                ]
+                for participle in participles_content:
+                    structured_content["content"].append({
+                        "tag": "div",
+                        "data": {"content": "participles"},
+                        "content": [participle]
+                    })
 
             examples_content = [
                 {
                     "tag": "div",
                     "data": {"content": "example-sentence"},
                     "content": example
-                } for example in entry.get('examples', [])
+                } for example in definition.get('examples', [])
             ]
             if examples_content:
                 structured_content["content"].append({
@@ -154,33 +228,83 @@ def convert_to_yomitan_format(db_path, output_path):
                     "content": examples_content
                 })
 
+            def_notes_content = [
+                {
+                    "tag": "div",
+                    "data": {"content": "definition-notes"},
+                    "content": note
+                } for note in def_notes
+            ]
+
+            if def_notes_content:
+                structured_content["content"].append({
+                    "tag": "div",
+                    "data": {"content": "extra-info"},
+                    "content": def_notes_content
+                })
+
             synonyms_content = [
                 {
                     "tag": "a",
-                    "content": synonym,
-                    "href": f"?query={synonym}&wildcards=off"
-                } for synonym in entry.get('synonyms', [])
+                    "content": clean_star_symbols(synonym),
+                    "href": f"?query={clean_star_symbols(synonym)}&wildcards=off"
+                } for synonym in definition.get('synonyms', [])
             ]
-            if synonyms_content:
+            for synonym in synonyms_content:
                 structured_content["content"].append({
                     "tag": "div",
                     "data": {"content": "synonyms"},
-                    "content": synonyms_content
+                    "content": [synonym]
                 })
 
             antonyms_content = [
                 {
                     "tag": "a",
-                    "content": antonym,
-                    "href": f"?query={antonym}&wildcards=off"
-                } for antonym in entry.get('antonyms', [])
+                    "content": clean_star_symbols(antonym),
+                    "href": f"?query={clean_star_symbols(antonym)}&wildcards=off"
+                } for antonym in definition.get('antonyms', [])
             ]
-            if antonyms_content:
+            for antonym in antonyms_content:
                 structured_content["content"].append({
                     "tag": "div",
                     "data": {"content": "antonyms"},
-                    "content": antonyms_content
+                    "content": [antonym]
                 })
+
+            if idx == len(definitions) - 1:
+                structured_content["content"].append({
+                    "tag": "div",
+                    "data": {"content": "attribution"},
+                    "content": [
+                        {
+                            "tag": "a",
+                            "content": "DLE",
+                            "href": f"https://dle.rae.es/{word}"
+                        },
+                        {
+                            "tag": "span",
+                            "content": " | ",
+                        },
+                        {
+                            "tag": "a",
+                            "content": "DLE",
+                            "href": f"https://rae.es/diccionario-estudiante/{word}"
+                        }
+                    ]
+                })
+                expressions_content = [
+                    {
+                        "tag": "a",
+                        "content": clean_star_symbols(expression),
+                        "href": f"?query={clean_star_symbols(expression)}&wildcards=off"
+                    } for expression in expressions
+                ]
+                for expression in expressions_content:
+                    structured_content["content"].append({
+                        "tag": "div",
+                        "data": {"content": "expressions"},
+                        "content": [expression]
+                    })
 
             key = (definition_tags, rule_identifier)
             if key not in grouped_definitions:
@@ -188,7 +312,7 @@ def convert_to_yomitan_format(db_path, output_path):
             grouped_definitions[key].append(structured_content)
 
         for (definition_tags, rule_identifier), definitions in grouped_definitions.items():
-            conjugation_model = entry.get("conjugation_model")
+            conjugation_model = structured_data.get("conjugation_model") if isinstance(structured_data, dict) else None
             term_tags = conjugation_model_mapping.get(conjugation_model, "") if conjugation_model else ""
             sequence_number = 0
 
@@ -211,7 +335,6 @@ def convert_to_yomitan_format(db_path, output_path):
     except IOError as e:
         logging.error(f"Error writing to output file: {e}")
 
-    conn.close()
-    logging.info("Database connection closed. Conversion process completed.")
+    logging.info("Conversion process completed.")
 
-convert_to_yomitan_format('dde2.db', 'term_bank_1.json')
+convert_to_yomitan_format('term_bank_0.jsonl', 'term_bank_1.json', input_type='jsonl')
