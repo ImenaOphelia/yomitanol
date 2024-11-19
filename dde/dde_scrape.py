@@ -2,51 +2,51 @@
 
 import lxml.html
 from selenium import webdriver
-import sqlite3
 import json
 import csv
+from datetime import datetime
 
-def init_db(db_path):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS dde (
-        id integer PRIMARY KEY autoincrement,
-        url text NOT NULL UNIQUE,
-        word text,
-        type text,  -- 'verb' or 'expression'
-        structured_data text,  -- Store data in JSON format
-        time DATETIME DEFAULT CURRENT_TIMESTAMP
-    )""")
-    return conn, cursor
-
-def store_entry(url, word, entry_type, structured_data):
+def store_entry(file_handle, url, word, entry_type, structured_data):
     try:
-        cur.execute('''
-        INSERT INTO dde (
-            url, word, type, structured_data
-        ) VALUES (?, ?, ?, ?)
-        ''', [url, word, entry_type, json.dumps(structured_data, ensure_ascii=False)])
-        con.commit()
+        entry = {
+            'url': url,
+            'word': word,
+            'type': entry_type,
+            'data': structured_data,
+            'timestamp': datetime.now().isoformat()
+        }
+        file_handle.write(json.dumps(entry, ensure_ascii=False) + '\n')
         print(f' 💾 {entry_type.capitalize()} "{word}" @ {url} stored')
     except Exception as e:
         print(e, url)
 
-def is_word_saved(word):
-    cur.execute('SELECT count(*) FROM dde WHERE word=?', (word,))
-    return cur.fetchone()[0] > 0
+def get_text_content(element):
+    return ' '.join(element.xpath('.//text()')).strip() if element is not None else ''
 
-def fetch_page(driver, url, key_word, grammar_tags, usage_tags, geo_tags, not_found_words, max_retries=3):
-    if is_word_saved(key_word):
-        print(f'SKIPPING: Word "{key_word}" already saved')
-        return
+def get_next_word(soup, current_word):
+    rueda = soup.xpath('//ul[@class="rueda"]/li/a | //ul[@class="rueda"]/li/b')
+    current_found = False
+    
+    words_in_wheel = [link.text_content().strip() for link in rueda]
+    
+    for i, link in enumerate(rueda):
+        word = link.text_content().strip()
+        if current_found:
+            next_word = word
+            print(f"Found next word: {next_word}")
+            return next_word
+        if word == current_word:
+            current_found = True
+            if i == len(rueda) - 1:
+                next_word = words_in_wheel[0]
+                return next_word
+            
+    if not current_found:
+        print(f"Warning: Could not find {current_word} in the term wheel")
+    
+    return None
 
-    cur.execute('SELECT count(*) FROM dde WHERE url=?', (url,))
-    count = cur.fetchone()[0]
-    if count == 1:
-        print(f'SKIPPING: URL already saved {url}')
-        return
-
+def fetch_page(output_file, driver, url, key_word, grammar_tags, usage_tags, geo_tags, not_found_words, max_retries=3):
     retries = 0
     markup = ''
     while retries < max_retries:
@@ -62,14 +62,14 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, geo_tags, not_fo
     if not markup:
         not_found_words.append(url)
         print(f' ❌ No valid content found for "{key_word}" @ {url} after {max_retries} attempts. Skipping...')
-        return
+        return None
 
     try:
         soup = lxml.html.fromstring(markup)
     except lxml.etree.ParserError as e:
         print(f'Parsing error for "{key_word}" @ {url}: {e}. Skipping...')
         not_found_words.append(url)
-        return
+        return None
 
     soup.make_links_absolute(base_url='https://rae.es/diccionario-estudiante/')
     word_element = soup.xpath('//span[@class="entrada"]')
@@ -77,71 +77,54 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, geo_tags, not_fo
 
     if not word:
         print(f' ❌ No entry found for "{key_word}" @ {url}. Skipping...')
-        return
+        return None
 
     structured_data = []
+    expressions_data = []
 
-    def get_text_content(element):
-        return ''.join(element.itertext()).strip() if element is not None else ''
-
-    unique_definitions = set()
-
+    conjugation_model = None
+    plural = None
+    participios = []
+    note = None
     paracep = soup.xpath('//div[@class="paracep"]')
+
+    # Process paracep if it exists
     if paracep:
+        model_span = paracep[0].xpath('.//span[contains(@class, "verboModelo")]')
+        plural_span = paracep[0].xpath('.//span[contains(@class, "pluralForm")]')
+        note_span = paracep[0].xpath('.//div[contains(@class, "par")]')
+        participio_spans = paracep[0].xpath('.//span[contains(@class, "participioIrregular")]')
+
+        if model_span:
+            conjugation_model = model_span[0].text_content().strip()
+        
+        if plural_span:
+            plural = plural_span[0].text_content().strip()
+
+        if participio_spans:
+            participios = [span.text_content().strip() for span in participio_spans]
+
+        if not conjugation_model and not plural and not participios and note_span:
+            note = note_span[0].text_content().strip()
+
         for acep in paracep[0].xpath('.//div[contains(@class, "acep")]'):
-            definition_text = get_text_content(acep.xpath('.//span[@class="def"]')[0]) if acep.xpath('.//span[@class="def"]') else ""
-            acep_id = acep.get('id')
-            unique_id = (definition_text, acep_id)
+            process_definition(acep, structured_data, grammar_tags, usage_tags, geo_tags)
 
-            if acep_id is None:
-                continue
+        for p in paracep:
+            p.getparent().remove(p)
 
-            if unique_id in unique_definitions:
-                continue
-
-            unique_definitions.add(unique_id)
-            definition_data = {
-                "definition": '',
-                "grammar_tags": [],
-                "usage_tags": [],
-                "geo_tags": [],
-                "examples": [],
-                "synonyms": [],
-                "antonyms": [],
-                "id": acep_id
-            }
-
-            definition = acep.xpath('.//span[@class="def"]')
-            if definition:
-                definition_data["definition"] = get_text_content(definition[0])
-
-            extract_tags(acep, definition_data, grammar_tags, usage_tags, geo_tags)
-
-            example_elements = acep.xpath('.//span[@class="ejemplo"]')
-            definition_data["examples"].extend(get_text_content(e) for e in example_elements)
-
-            extract_synonyms_antonyms(acep, definition_data)
-
-            structured_data.append(definition_data)
-
+    # Process articles
     articles = soup.xpath('//article')
     if articles:
         for article in articles:
-            for acep in article.xpath('.//div[contains(@class, "acep")]'):
-                definition_text = get_text_content(acep.xpath('.//span[@class="def"]')[0]) if acep.xpath('.//span[@class="def"]') else ""
-                acep_id = acep.get('id')
-                unique_id = (definition_text, acep_id)
-
-                if acep_id is None:
-                    continue
-
-                if unique_id in unique_definitions:
-                    continue
-
-                unique_definitions.add(unique_id)
-
+            locs_and_sols = article.xpath('.//div[@class="locs"]//div[@class="fc"] | .//div[@class="sols"]//div[@class="fc"]')
+            
+            for loc in locs_and_sols:
+                expression_element = loc.xpath('.//span[@class="headword-fc"]')
+                headword = expression_element[0].text_content() if expression_element else key_word
 
                 definition_data = {
+                    "id": loc.get('id'),
                     "definition": '',
                     "grammar_tags": [],
                     "usage_tags": [],
@@ -149,52 +132,114 @@ def fetch_page(driver, url, key_word, grammar_tags, usage_tags, geo_tags, not_fo
                     "examples": [],
                     "synonyms": [],
                     "antonyms": [],
-                    "id": acep_id
+                    "main_entry": key_word,
+                    "term_notes": [],
                 }
 
-                definition = acep.xpath('.//span[@class="def"]')
+                definition = loc.xpath('.//div[@class="acep nogr"]//span[@class="def"]')
                 if definition:
                     definition_data["definition"] = get_text_content(definition[0])
 
-                extract_tags(acep, definition_data, grammar_tags, usage_tags, geo_tags)
+                examples = loc.xpath('.//span[@class="ejemplo"]')
+                definition_data["examples"].extend(get_text_content(e) for e in examples)
 
-                example_elements = acep.xpath('.//span[@class="ejemplo"]')
-                definition_data["examples"].extend(get_text_content(e) for e in example_elements)
+                note_elements = loc.xpath('.//div[contains(@class, "par")]')
+                definition_data["term_notes"].extend(get_text_content(note) for note in note_elements)
 
-                extract_synonyms_antonyms(acep, definition_data)
+                extract_tags(loc, definition_data, grammar_tags, usage_tags, geo_tags)
 
-                structured_data.append(definition_data)
+                extract_synonyms_antonyms(loc, definition_data)
 
-    locs_and_sols = article.xpath('.//div[@class="locs"]//div[@class="fc"] | .//div[@class="sols"]//div[@class="fc"]')
-    if locs_and_sols:
-        for loc in locs_and_sols:
-            expression_element = loc.xpath('.//span[@class="headword-fc"]')
-            headword = expression_element[0].text_content() if expression_element else key_word  # Use site headword if available, else fallback
+                expr_type = "locution" if "locs" in loc.xpath('ancestor::div/@class')[0] else "solution"
+                expressions_data.append({
+                    "expression": headword,
+                    "type": expr_type,
+                    "data": definition_data
+                })
 
-            definition_data = {
-                "id": loc.get('id'),
-                "definition": '',
-                "grammar_tags": [],
-                "usage_tags": [],
-                "geo_tags": [],
-                "examples": []
-            }
+            for loc in locs_and_sols:
+                loc.getparent().remove(loc)
 
-            definition = loc.xpath('.//div[@class="acep nogr"]//span[@class="def"]/text()')
-            if definition:
-                definition_data["definition"] = ' '.join(definition)
+            for acep in article.xpath('.//div[contains(@class, "acep")]'):
+                process_definition(acep, structured_data, grammar_tags, usage_tags, geo_tags)
 
-            extract_tags(loc, definition_data, grammar_tags, usage_tags, geo_tags)
+    if structured_data:
+        entry_type = 'verb' if paracep else 'general'
+        main_entry = {
+            'definitions': structured_data,
+            'expressions': [expr['expression'] for expr in expressions_data]
+        }
 
-            examples_loc = loc.xpath('.//div[@class="acep nogr"]//span[@class="ejemplo"]/text()')
-            definition_data["examples"].extend(examples_loc)
+        if conjugation_model and entry_type == 'verb':
+            main_entry['conjugation_model'] = conjugation_model
 
-            expression_url = f"{url}#{loc.get('id')}"
+        if plural and entry_type == 'verb':
+            main_entry['plural'] = plural
 
-            if headword:
-                store_entry(expression_url, headword, 'expression', [definition_data])
+        if participios and entry_type == 'verb':
+            main_entry['participios'] = participios
 
-    store_entry(url, key_word, 'verb' if paracep else 'general', structured_data)
+        if note and entry_type == 'verb':
+            main_entry['term_note'] = note
+
+        store_entry(output_file, url, key_word, entry_type, main_entry)
+
+    for expr in expressions_data:
+        expr_url = f"{url}#{expr['data']['id']}"
+        store_entry(output_file, expr_url, expr['expression'], expr['type'], [expr['data']])
+
+    return soup
+
+def process_definition(acep, structured_data, grammar_tags, usage_tags, geo_tags):
+    definition_text = get_text_content(acep.xpath('.//span[@class="def"]')[0]) if acep.xpath('.//span[@class="def"]') else ""
+    acep_id = acep.get('id')
+
+    if acep_id is None:
+        return
+
+    definition_data = {
+        "definition": '',
+        "grammar_tags": [],
+        "usage_tags": [],
+        "geo_tags": [],
+        "def_notes": [],
+        "examples": [],
+        "synonyms": [],
+        "antonyms": [],
+        "id": acep_id
+    }
+
+    definition = acep.xpath('.//span[@class="def"]')
+    if definition:
+        definition_data["definition"] = get_text_content(definition[0])
+
+    for loc in acep.xpath('.//div[@class="locs"]//div[@class="fc"] | .//div[@class="sols"]//div[@class="fc"]'):
+        loc.getparent().remove(loc)
+
+    extract_tags(acep, definition_data, grammar_tags, usage_tags, geo_tags)
+
+    examples = acep.xpath('.//span[@class="ejemplo"]')
+    definition_data["examples"].extend(get_text_content(e) for e in examples)
+
+    extract_synonyms_antonyms(acep, definition_data)
+
+    extract_notes(acep, definition_data)
+
+    structured_data.append(definition_data)
+
+def extract_notes(element, definition_data):
+    if 'def_notes' not in definition_data:
+        definition_data['def_notes'] = []
+    
+    def_notes_tb = element.xpath('.//span[@class="defP"]')
+    if def_notes_tb:
+        for note in def_notes_tb:
+            definition_data["def_notes"].append(get_text_content(note))
+
+    symbols_in_element = element.xpath('.//span[@class="symbol"]')
+    for symbol in symbols_in_element:
+        symbol_text = symbol.text_content().strip()
+        definition_data["def_notes"].append({"symbol": symbol_text})
 
 def extract_tags(element, definition_data, grammar_tags, usage_tags, geo_tags):
     grammar_tags_in_element = element.xpath(".//abbr[@class='gram' or @class='gram primera']")
@@ -217,15 +262,16 @@ def extract_tags(element, definition_data, grammar_tags, usage_tags, geo_tags):
         tag_text = tag.text
         definition_data["geo_tags"].append({"tag": tag_text})
         geo_tags[(tag_text, tag_name)] = True
+    pass
 
-def extract_synonyms_antonyms(acep, definition_data):
-    for ref in acep.xpath('.//div[contains(@class, "ref")]'):
+def extract_synonyms_antonyms(element, definition_data):
+    for ref in element.xpath('.//div[contains(@class, "ref")]'):
         ref_type = ref.get('class').replace('ref', '').strip()
-        ref_word = ref.xpath('.//a/text()')
+        ref_words = [word.strip() for word in ref.xpath('.//a/text()')]
         if ref_type == 'S':  # Synonym
-            definition_data["synonyms"].extend(ref_word)
+            definition_data["synonyms"].extend(ref_words)
         elif ref_type == 'A':  # Antonym
-            definition_data["antonyms"].extend(ref_word)
+            definition_data["antonyms"].extend(ref_words)
 
 def save_tags_to_file(tags, filename):
     with open(filename, 'w', newline='', encoding='utf-8') as file:
@@ -233,21 +279,14 @@ def save_tags_to_file(tags, filename):
         writer.writerow(['tag', 'name'])
         for tag, name in sorted(tags.keys()):
             writer.writerow([tag, name])
+    pass
 
 if __name__ == '__main__':
-    words = open('dde_keys.txt', encoding='utf-8').readlines()
-    words = [w.strip().rstrip('.') for w in words]
-    words = [w.split(',')[0] if ',' in w else w for w in words]
-
-    try:
-        with open('unfound_words.txt', 'r', encoding='utf-8') as f:
-            unfound_words = set(line.strip() for line in f)
-    except FileNotFoundError:
-        unfound_words = set()
-
-    words = [word for word in words if word not in unfound_words]
-
-    con, cur = init_db('dde2.db')
+    initial_word = "actitud"  # Starting word
+    processed_words = set()
+    current_word = initial_word
+    output_file = open('term_bank_0.jsonl', 'w', encoding='utf-8')
+    
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--guest")
     chrome_options.add_argument("--blink-settings=imagesEnabled=false")
@@ -266,18 +305,44 @@ if __name__ == '__main__':
 
     grammar_tags = {}
     usage_tags = {}
+    geo_tags = {}
+    not_found_words = []
 
-    for word in words:
-        url = f'https://rae.es/diccionario-estudiante/{word}'
-        fetch_page(driver, url, word, grammar_tags, usage_tags, unfound_words)
+    try:
+        while current_word and current_word not in processed_words:
+            print(f"\nProcessing word: {current_word}")
+            url = f'https://rae.es/diccionario-estudiante/{current_word}'
+            soup = fetch_page(output_file, driver, url, current_word, grammar_tags, usage_tags, geo_tags, not_found_words)
+            
+            if soup is None:
+                print(f"Error processing {current_word}, stopping")
+                break
+                
+            processed_words.add(current_word)
+            
+            next_word = get_next_word(soup, current_word)
+            
+            if next_word is None:
+                break
+                
+            if next_word == initial_word:
+                break
+                
+            current_word = next_word
 
-    save_tags_to_file(grammar_tags, 'grammar_tags.csv')
-    save_tags_to_file(usage_tags, 'usage_tags.csv')
-    save_tags_to_file(geo_tags, 'geo_tags.csv')
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        
+    finally:
+        output_file.close()
+        
+        save_tags_to_file(grammar_tags, 'grammar_tags.csv')
+        save_tags_to_file(usage_tags, 'usage_tags.csv')
+        save_tags_to_file(geo_tags, 'geo_tags.csv')
 
-    with open('unfound_words.txt', 'w', encoding='utf-8') as f:
-        for unfound_word in sorted(unfound_words):
-            f.write(f"{unfound_word}\n")
+        with open('unfound_words.txt', 'w', encoding='utf-8') as f:
+            for unfound_word in sorted(not_found_words):
+                f.write(f"{unfound_word}\n")
 
-    print('Completed. Quitting...')
-    driver.quit()
+        print('Completed. Quitting...')
+        driver.quit()
