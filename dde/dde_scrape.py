@@ -282,7 +282,7 @@ def save_tags_to_file(tags, filename):
     pass
 
 if __name__ == '__main__':
-    initial_word = "actitud"  # Starting word
+    initial_word = "a"  # Starting word
     processed_words = set()
     current_word = initial_word
     output_file = open('term_bank_0.jsonl', 'w', encoding='utf-8')

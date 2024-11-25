@@ -169,7 +169,10 @@ tests/
 # Temp
 dde/dde_keys_1.txt
 dde/get_keys.py
-freq/
+freq/Spanish10000.py
+freq/reuters/
+freq/crea/
+freq/corde/
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

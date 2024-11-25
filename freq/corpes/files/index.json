@@ -1,0 +1,15 @@
+{
+    "title": "CORPES",
+    "revision": "2024-11-24",
+    "sequenced": true,
+    "version": 3,
+    "author": "ImenaOphelia",
+    "isUpdatable": true,
+    "indexUrl": "https://github.com/ImenaOphelia/yomitanol/blob/main/freq/corpes/files/index.json",
+    "downloadUrl": "https://github.com/ImenaOphelia/yomitanol/blob/main/freq/corpes/CORPES.zip",
+    "url": "https://www.rae.es/corpes/",
+    "description": "Corpus del Español del Siglo XXI for Yomitan. Over 1 500 000 lemmas, taken from texts produced both in Spain and America since 2001.",
+    "attribution": "Real Academia Española",
+    "targetLanguage": "es",
+    "frequencyMode": "rank-based"
+}

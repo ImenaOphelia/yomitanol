@@ -8,5 +8,7 @@
     "sourceLanguage": "es",
     "targetLanguage": "es",
     "title": "Diccionario del estudiante",
-    "indexUrl": "https://github.com/ImenaOphelia/yomitanol/blob/main/dde/Diccionario%20del%20estudiante.zip"
+    "isUpdatable": true,
+    "indexUrl": "https://raw.githubusercontent.com/ImenaOphelia/yomitanol/main/dde/index.json",
+    "downloadUrl": "https://github.com/ImenaOphelia/yomitanol/blob/main/dde/Diccionario%20del%20estudiante.zip"
 }
