@@ -162,9 +162,17 @@ oxford/
 dde2.db
 DRAE.db
 drae.css
+usage_tags.csv
+unfound_words.txt
+unfound_words.bak
+term_bank_0.jsonl
+grammar_tags.csv
+geo_tags.csv
 conjugation_filtered.json
 duplicates_report.txt
 tests/
+logs/
+Nueva carpeta/
 
 # Temp
 dde/dde_keys_1.txt

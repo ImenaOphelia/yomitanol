@@ -51,7 +51,7 @@ verbs = {
     "valer": "64",
     "venir": "65",
     "ver": "66",
-    "yacer": "67"
+    "yacer": "67",
 }
 
 category = "modeloIrregular"

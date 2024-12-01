@@ -1,5 +1,6 @@
 import scrapy
 
+
 class DictionaryItem(scrapy.Item):
     url = scrapy.Field()
     word = scrapy.Field()
